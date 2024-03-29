@@ -1,28 +1,37 @@
-import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from sockets import ConnectionManager
+import asyncio
+import json
+from datetime import datetime
+import websockets
 
-app = FastAPI()
 
-manager = ConnectionManager()
+async def connect_to_server():
+    uri = "ws://172.16.111.76:8007/ws/root/"
+    while True:  # Reconnect loop
+        try:
+            async with websockets.connect(uri) as websocket:
+                async for message in websocket:
+                    print("Message received from server:", message)
+                    response_message = ai_response(message)
+                    response_data = {
+                        "message": response_message,
+                        "conversation_id": "123",
+                        "message_id": "456",
+                        "client_id": "789",
+                        "client_port": 12345,
+                        "time": int(datetime.now().timestamp() * 1000),
+                        "sender": "AI"
+                    }
+                    await websocket.send(json.dumps(response_data))
+                    print("Response sent to server:", response_data)
+        except websockets.exceptions.ConnectionClosedError:
+            print("Connection to server closed unexpectedly. Reconnecting...")
+            await asyncio.sleep(1)
 
-@app.websocket("/communicate")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await manager.send_personal_message(f"Received:{data}",websocket)
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        await manager.send_personal_message("Bye!!!",websocket)
-        
-@app.get("/")
-async def read_index():
-    # Return the content of the index.html file
-    return FileResponse("index.html")
+def ai_response(message):
+    print(message)
+    return message
 
-if __name__ == '__main__':
-    uvicorn.run('main:app', host="0.0.0.0", port=5000, reload=True)
+
+if __name__ == "__main__":
+    asyncio.get_event_loop().run_until_complete(connect_to_server())
+
